@@ -1,0 +1,21 @@
+{
+  "name": "e_commerce_project",
+  "version": "1.0.0",
+  "description": "A web app for tracking e-commerce orders",
+  "keywords": [
+    "e-commerce",
+    "orders",
+    "tracking",
+    "web"
+  ],
+  "license": "ISC",
+  "author": "Jonah Ramirez",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
