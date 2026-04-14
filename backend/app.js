@@ -3,8 +3,36 @@ const db = require('./db.js');
 const app = express();
 const port = 3000;
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+require('dotenv').config();
+
+//This Secret Key is mixed with the unique info of the user
+//That way, each newly created token is unique 
+const JWT_SECRET = process.env.JWT_SECRET;
 
 app.use(express.json());
+
+function authenticateToken(req, res, next) {
+  // Get the token from the header
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; 
+
+  if (token == null) {
+    return res.status(401).json({ message: "No token provided" });
+  }
+
+  // Verify the token using the secret key
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: "Invalid or expired token" });
+    }
+
+    // Attach the decoded user data to the request object
+    req.user = user; 
+    
+    next(); 
+  });
+}
 
 app.get('/', (req, res) => {
   res.send('Hello World!')
@@ -54,9 +82,41 @@ app.post('/registration', async (req, res, next) => {
 //Login Route
 app.post('/login', async (req, res, next) => {
   try {
-    
-  } catch (error) {
+    const {username, password} = req.body;   
 
+    //User check
+    const userCheck = await db.query('SELECT * FROM customers WHERE username = $1', [username]);
+    if (userCheck.rows.length === 0) {
+      return res.status(400).json({ message: "Invalid username or password" });
+    }
+
+    const user = userCheck.rows[0];
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid username or password" });
+    }
+
+    // "Sign" a token containing the user's ID
+    const token = jwt.sign(
+      { id: user.id, username: user.username }, 
+      JWT_SECRET, 
+      { expiresIn: '1h' } // Token expires in 1 hour
+    );
+
+    res.status(200).json({
+      message: "Login successful",
+      token: token,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error accessing customer profile", error: error.message })
   }
 });
 
@@ -83,9 +143,9 @@ app.get('/products/:productId/reviews', async (req, res, next) => {
 });
 
 
-//Customers
+//Customers should see their profile information, login , etc
 
-app.get('/customers/:customerId', async (req, res, next) => {
+app.get('/profile', authenticateToken, async (req, res, next) => {
   try {
     const queryText = `
       SELECT 
@@ -98,7 +158,7 @@ app.get('/customers/:customerId', async (req, res, next) => {
       WHERE id = $1
     `;
     
-    const result = await db.query(queryText, [req.params.customerId]);
+    const result = await db.query(queryText, [req.user.id]);
 
     // If no customer is found with that ID
     if (result.rows.length === 0) {
@@ -110,6 +170,48 @@ app.get('/customers/:customerId', async (req, res, next) => {
     
   } catch (error) {
     res.status(500).json({ message: "Error fetching customer profile", error: error.message });
+  }
+});
+
+app.put('/profile', authenticateToken, async (req, res, next) => {
+  try {
+    const {username, email, phone, address} = req.body;
+
+    // COALESCE checks for first non null value. 
+    // If user only updates phone, then other values won't be forgotten.
+    // Will just keep the values that exist and only changes the new value
+    const queryText = `
+      UPDATE customers 
+      SET 
+        username = COALESCE($1, username), 
+        email    = COALESCE($2, email), 
+        phone    = COALESCE($3, phone), 
+        address  = COALESCE($4, address) 
+      WHERE id = $5 
+      RETURNING id, username, email, phone, address
+    `;
+
+    // Translates so that SQL and JS work together. SQL knows null, not undefined
+    // If username or any entry undefined, will substitute with null
+    // This lets COALESCE work properly for partial updates.
+    const values = [
+      username || null, 
+      email || null, 
+      phone || null, 
+      address || null, 
+      req.user.id
+    ];
+
+    const result = await db.query(queryText, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "Profile updated!", user: result.rows[0] });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error updating profile", error: error.message });
   }
 });
 
