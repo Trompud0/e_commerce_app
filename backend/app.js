@@ -12,6 +12,8 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 app.use(express.json());
 
+
+//Authentication middleware
 function authenticateToken(req, res, next) {
   // Get the token from the header
   const authHeader = req.headers['authorization'];
@@ -258,30 +260,201 @@ app.get('/categories/:categoryId/products', async (req, res, next) => {
 
 });
 
+//
 //Products
+//
 
 app.get('/products', async (req, res, next) => {
+  try {
+    const queryText = `
+      SELECT *
+      FROM products
+    `;
+    
+    const result = await db.query(queryText);
+    
+    res.json(result.rows[0]);
 
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching products", error: error.message });
+  }
 });
 
 app.get('/products/:productId', async (req, res, next) => {
+  try {
+    const queryText = `
+      SELECT *
+      FROM products
+      WHERE id = $1
+    `;
 
+    const result = await db.query(queryText, [req.params.productId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json(result.rows[0]);
+
+  } catch (error) {
+   res.status(500).json({ message: "Error fetching product", error: error.message }); 
+  }
 });
 
-//Order
+//
+//Order Section
+//
 
-app.get('/orders', async (req, res, next) => {
 
+// Lets you see Orders
+app.get('/orders', authenticateToken, async (req, res, next) => {
+  try {
+    const queryText = `
+      SELECT 
+        id,
+        order_date,
+        order_status
+      FROM orders
+      WHERE customer_id = $1 
+      ORDER BY order_date DESC
+    `;
+
+    const result = await db.query(queryText, [req.user.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(200).json({message:"You haven't placed any orders yet."});
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching order history", error: error.message });
+  }
 });
 
-//OrdersItems
 
-app.get('/orders/:orderId', async (req, res, next) => {
+//Lets you see what is in an Order
+app.get('/orders/:orderId', authenticateToken, async (req, res, next) => {
+  try {
+    const queryText = `
+      SELECT 
+        orderitems.quantity, 
+        orderitems.price_at_purchase, 
+        products.product_name 
+      FROM orderitems
+      JOIN products ON orderitems.product_id = products.id
+      JOIN orders ON orderitems.order_id = orders.id
+      WHERE orderitems.order_id = $1 AND orders.customer_id = $2
+    `;
+    
+    const result = await db.query(queryText, [req.params.orderId, req.user.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Order not found or access denied" });
+    }
 
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching order details", error: error.message });
+  }
 });
 
-//Payments
+//Can create an order
+app.post('/orders', authenticateToken, async (req, res, next) => {
+  const { items } = req.body; // Expecting an array of { product_id, quantity, price }
+  const customerId = req.user.id; // From the JWT
+  
+  try {
+    // 1. START the Transaction
+    // This tells the db to put this in temporary workspace until transaction completed 
+    await db.query('BEGIN');
 
-app.get('/payments', async (req, res, next) => {
+    // 2. Create the Order "header"
+    // The RETURNING id part important. Lets you know the id of the new row that was created.
+    // This will then be sent to step 3.
+    const orderResult = await db.query(
+      'INSERT INTO orders (customer_id, order_date, order_status) VALUES ($1, NOW(), $2) RETURNING id',
+      [customerId, 'pending']
+    );
+    const orderId = orderResult.rows[0].id;
+
+    // 3. Loop through items and insert each into order_items
+    for (const item of items) {
+      await db.query(
+        'INSERT INTO orderitems (order_id, product_id, quantity, price_at_purchase) VALUES ($1, $2, $3, $4)',
+        [orderId, item.product_id, item.quantity, item.price_at_purchase]
+      );
+
+      // Updates the stock quantity 
+      await db.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
+        [item.quantity, item.product_id]
+      );
+    }
+
+    // 4. COMMIT the Transaction (Save everything for real)
+    await db.query('COMMIT');
+
+    res.status(201).json({ message: "Order placed successfully", orderId });
+
+  } catch (error) {
+    // 5. ROLLBACK if anything goes wrong (Deletes the partial order)
+    await db.query('ROLLBACK');
+    res.status(500).json({ message: "Order failed", error: error.message });
+  }
+});
+
+
+// Cart
+
+app.post('/cart', authenticateToken, async (req, res, next) => {
+  try {
+    const { product_id, quantity } = req.body;
+    const customer_id = req.user.id;
+
+    // 1. Check if the product exists and has enough stock
+    const products = await db.query('SELECT stock_quantity FROM products WHERE id = $1', [product_id]);
+    
+    if (products) {
+
+    }
+
+  } catch (error) {
+    res.status(500).json({ message: "Error adding to cart", error: error.message });
+  }
+});
+
+app.get('/cart', authenticateToken, async (req, res, next) => {
+  try {
+    const queryText = `
+      SELECT 
+        c.id as cart_item_id, 
+        p.product_name, 
+        p.price, 
+        c.quantity, 
+        (p.price * c.quantity) AS subtotal
+      FROM cart_items c
+      JOIN products p ON c.product_id = p.id
+      WHERE c.customer_id = $1
+    `;
+    const result = await db.query(queryText, [req.user.id]);
+    res.json(result.rows);
+
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching cart", error: error.message });
+  }
+});
+
+app.delete('/cart/:itemId', authenticateToken, async (req, res, next) => {
+  try {
+    await db.query('DELETE FROM cart_items WHERE id = $1 AND customer_id = $2', [req.params.itemId, req.user.id]);
+    res.json({ message: "Item removed from cart" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting item from the cart", error: error.message });
+  }
+});
+
+//Checkout route (involves Payments table)
+
+app.post('/checkout', async (req, res, next) => {
 
 });
