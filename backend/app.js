@@ -247,17 +247,40 @@ app.get('/categories/:categoryId', async (req, res, next) => {
 app.get('/categories', async (req, res, next) => {
   try {
     const queryText = `
-    SELECT 
-    
+      SELECT *
+      FROM categories
     `;
+    const result = await db.query(queryText);
+
+    res.json(result.rows);
 
   } catch (error) {
-
+    res.status(500).json({ message: "Error fetching categories", error: error.message });
   }
 });
 
 app.get('/categories/:categoryId/products', async (req, res, next) => {
+  try {
+    const {categoryId} = req.params;
 
+    const queryText = `
+      SELECT *
+      FROM products
+      WHERE category_id = $1
+    `;
+
+    const result = await db.query(queryText, [categoryId]);
+
+    // Check for products in the Category
+    if (result.rows.length === 0) {
+      res.status(404).json({ message: "No products in this category"});
+    }
+
+    res.json(result.rows);
+
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching products for this category", error: error.message });
+  }
 });
 
 //
@@ -273,7 +296,7 @@ app.get('/products', async (req, res, next) => {
     
     const result = await db.query(queryText);
     
-    res.json(result.rows[0]);
+    res.json(result.rows);
 
   } catch (error) {
     res.status(500).json({ message: "Error fetching products", error: error.message });
@@ -358,52 +381,6 @@ app.get('/orders/:orderId', authenticateToken, async (req, res, next) => {
   }
 });
 
-//Can create an order
-app.post('/orders', authenticateToken, async (req, res, next) => {
-  const { items } = req.body; // Expecting an array of { product_id, quantity, price }
-  const customerId = req.user.id; // From the JWT
-  
-  try {
-    // 1. START the Transaction
-    // This tells the db to put this in temporary workspace until transaction completed 
-    await db.query('BEGIN');
-
-    // 2. Create the Order "header"
-    // The RETURNING id part important. Lets you know the id of the new row that was created.
-    // This will then be sent to step 3.
-    const orderResult = await db.query(
-      'INSERT INTO orders (customer_id, order_date, order_status) VALUES ($1, NOW(), $2) RETURNING id',
-      [customerId, 'pending']
-    );
-    const orderId = orderResult.rows[0].id;
-
-    // 3. Loop through items and insert each into order_items
-    for (const item of items) {
-      await db.query(
-        'INSERT INTO orderitems (order_id, product_id, quantity, price_at_purchase) VALUES ($1, $2, $3, $4)',
-        [orderId, item.product_id, item.quantity, item.price_at_purchase]
-      );
-
-      // Updates the stock quantity 
-      await db.query(
-        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
-        [item.quantity, item.product_id]
-      );
-    }
-
-    // 4. COMMIT the Transaction (Save everything for real)
-    await db.query('COMMIT');
-
-    res.status(201).json({ message: "Order placed successfully", orderId });
-
-  } catch (error) {
-    // 5. ROLLBACK if anything goes wrong (Deletes the partial order)
-    await db.query('ROLLBACK');
-    res.status(500).json({ message: "Order failed", error: error.message });
-  }
-});
-
-
 // Cart
 
 app.post('/cart', authenticateToken, async (req, res, next) => {
@@ -414,9 +391,36 @@ app.post('/cart', authenticateToken, async (req, res, next) => {
     // 1. Check if the product exists and has enough stock
     const products = await db.query('SELECT stock_quantity FROM products WHERE id = $1', [product_id]);
     
-    if (products) {
-
+    if (products.rows.length === 0) {
+      return res.status(404).json({ message: "Product not found"});
     }
+
+    if (products.rows[0].stock_quantity < quantity) {
+      return res.status(400).json({ message: "Not enough stock"});
+    }
+
+    // 2. Logic: Check if this item is already in the cart for this user
+    // This is why the cart_items table was created
+    const checkCart = await db.query(
+      'SELECT * FROM cart_items WHERE customer_id = $1 AND product_id = $2',
+      [customer_id, product_id]
+    );
+
+    if (checkCart.rows.length > 0) {
+      const updatedCart = await db.query(
+        'UPDATE cart_items SET quantity = quantity + $1 WHERE customer_id = $2 AND product_id = $3 RETURNING *',
+        [quantity, customer_id, product_id]
+      );
+      return res.json(updatedCart.rows[0]);
+    }
+
+    // 3. If it's a new item, insert it
+      const newItem = await db.query(
+        'INSERT INTO cart_items (customer_id, product_id, quantity) VALUES ($1, $2, $3) ON CONFLICT (customer_id, product_id) DO UPDATE SET quantity = cart_items.quantity + $3 RETURNING *',
+        [customer_id, product_id, quantity]
+      );
+
+      res.status(201).json(newItem.rows[0]);
 
   } catch (error) {
     res.status(500).json({ message: "Error adding to cart", error: error.message });
@@ -444,6 +448,20 @@ app.get('/cart', authenticateToken, async (req, res, next) => {
   }
 });
 
+app.delete('/cart', authenticateToken, async (req, res, next) => {
+  try {
+    const result = await db.query('DELETE FROM cart_items WHERE customer_id = $1 RETURNING *', [req.user.id]);
+
+    if (result.rows.length === 0) {
+      return res.status(200).json({ message: "Cart was already empty." });
+    }
+    
+    res.json({ message: "Cart cleared succesfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting the cart", error: error.message });
+  }
+});
+
 app.delete('/cart/:itemId', authenticateToken, async (req, res, next) => {
   try {
     await db.query('DELETE FROM cart_items WHERE id = $1 AND customer_id = $2', [req.params.itemId, req.user.id]);
@@ -454,7 +472,71 @@ app.delete('/cart/:itemId', authenticateToken, async (req, res, next) => {
 });
 
 //Checkout route (involves Payments table)
+//Lets the user process their order
 
-app.post('/checkout', async (req, res, next) => {
+app.post('/checkout', authenticateToken, async (req, res, next) => {
 
+  const customer_id = req.user.id;
+
+  try {
+    await db.query('BEGIN');
+
+    // 2. Get all items in the user's cart
+    const cartResult = await db.query(
+      'SELECT c.product_id, c.quantity, p.price, p.stock_quantity FROM cart_items c JOIN products p ON c.product_id = p.id WHERE c.customer_id = $1',
+      [customer_id]
+    );
+
+    if (cartResult.rows.length === 0) {
+      await db.query('ROLLBACK');
+      return res.status(400).json({ message: "No items in your cart" });
+    }
+
+    // 3. Create the Order entry
+    const orderResult = await db.query(
+      'INSERT INTO orders (customer_id, order_date, order_status) VALUES ($1, NOW(), $2) RETURNING id', 
+      [customer_id, 'completed']
+    );
+    const orderId = orderResult.rows[0].id;
+
+    let totalAmount = 0;
+
+    // 4. Process each item
+    for (const item of cartResult.rows) {
+      if (item.stock_quantity < item.quantity) {
+        throw new Error(`Not enough stock for product with ID ${item.product_id}`);
+      }
+    
+      // Subtract stock from Products table
+
+      await db.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
+        [item.quantity, item.product_id]
+      );
+
+    // Add to OrderItems table
+      await db.query('INSERT INTO orderitems (order_id, product_id, quantity, price_at_purchase) VALUES ($1, $2, $3, $4)',
+        [orderId, item.product_id, item.quantity, item.price]
+      );
+
+      totalAmount += item.price * item.quantity;
+    }
+
+    // 5. Create Payment record
+    await db.query('INSERT INTO payments (order_id, payment_date, payment_amount, payment_method, payment_status) VALUES ($1, NOW(), $2, $3, $4)',
+    [orderId, totalAmount, 'Credit Card', 'Success']
+    );
+
+    // 6. Clear the User's Cart
+    await db.query('DELETE FROM cart_items WHERE customer_id = $1', [customer_id]);
+
+    // 7. If everything succeeded, Commit to the database
+    await db.query('COMMIT');
+
+    res.status(201).json({ message: "Checkout Complete!", orderId: orderId });
+
+  } catch(error) {
+    await db.query('ROLLBACK');
+    res.status(500).json({ error: error.message });
+  }
 });
