@@ -6,6 +6,33 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
+
+const swaggerOptions = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'E-commerce API',
+      version: '1.0.0',
+      description: 'A PERN stack API for a Codecademy portfolio project',
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+      },
+    },
+  },
+  apis: ['./app.js'], // Use the filename where your routes are located
+};
+
+const swaggerSpec = swaggerJsdoc(swaggerOptions);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
 //This Secret Key is mixed with the unique info of the user
 //That way, each newly created token is unique 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -45,6 +72,29 @@ app.listen(port, () => {
 });
 
 // Registration Route
+/**
+ * @swagger
+ * /registration:
+ *   post:
+ *     summary: Register a new account
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username: { type: string }
+ *               email: { type: string }
+ *               password: { type: string }
+ *               phone: { type: string }
+ *               address: { type: string }
+ *     responses:
+ *       201:
+ *         description: Registered successfully
+ */
+
 app.post('/registration', async (req, res, next) => {
   try {
     const { username, email, password, phone, address } = req.body;
@@ -82,6 +132,26 @@ app.post('/registration', async (req, res, next) => {
 });
 
 //Login Route
+/**
+ * @swagger
+ * /login:
+ *   post:
+ *     summary: Log in to get a JWT token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username: { type: string }
+ *               password: { type: string }
+ *     responses:
+ *       200:
+ *         description: Login successful
+ */
+
 app.post('/login', async (req, res, next) => {
   try {
     const {username, password} = req.body;   
@@ -124,6 +194,36 @@ app.post('/login', async (req, res, next) => {
 
 
 // Reviews Routes
+/**
+ * @swagger
+ * /products/{productId}/reviews:
+ *   get:
+ *     summary: Get all reviews for a specific product
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         description: The ID of the product to fetch reviews for
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: An array of reviews with customer usernames
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: integer }
+ *                   rating: { type: integer }
+ *                   review_text: { type: string }
+ *                   username: { type: string }
+ *       500:
+ *         description: Server error
+ */
 
 app.get('/products/:productId/reviews', async (req, res, next) => {
    try {
@@ -146,6 +246,34 @@ app.get('/products/:productId/reviews', async (req, res, next) => {
 
 
 //Customers should see their profile information, login , etc
+/**
+ * @swagger
+ * /profile:
+ *   get:
+ *     summary: View current user's profile
+ *     tags: [Profile]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: integer }
+ *                 username: { type: string }
+ *                 email: { type: string }
+ *                 phone: { type: string }
+ *                 address: { type: string }
+ *       404:
+ *         description: Customer profile not found
+ *       401:
+ *         description: No token provided
+ */
+
+
 
 app.get('/profile', authenticateToken, async (req, res, next) => {
   try {
@@ -174,6 +302,42 @@ app.get('/profile', authenticateToken, async (req, res, next) => {
     res.status(500).json({ message: "Error fetching customer profile", error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /profile:
+ *   put:
+ *     summary: Update customer profile information
+ *     tags: [profile]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       description: Provide any fields you wish to update. Unprovided fields will remain unchanged.
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               address:
+ *                 type: string
+ *             example:
+ *               phone: "555-0199"
+ *               address: "123 New Street, Tech City"
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
 
 app.put('/profile', authenticateToken, async (req, res, next) => {
   try {
@@ -219,6 +383,25 @@ app.put('/profile', authenticateToken, async (req, res, next) => {
 
 
 //Categories
+/**
+ * @swagger
+ * /categories/{categoryId}:
+ *   get:
+ *     summary: Get category by ID
+ *     tags: [categories]
+ *     parameters:
+ *       - in: path
+ *         name: categoryId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Category details
+ *       404:
+ *         description: Category not found
+ */
+
 
 app.get('/categories/:categoryId', async (req, res, next) => {
   try {
@@ -244,6 +427,17 @@ app.get('/categories/:categoryId', async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /categories:
+ *   get:
+ *     summary: Get all categories
+ *     tags: [categories]
+ *     responses:
+ *       200:
+ *         description: A list of categories
+ */
+
 app.get('/categories', async (req, res, next) => {
   try {
     const queryText = `
@@ -258,6 +452,26 @@ app.get('/categories', async (req, res, next) => {
     res.status(500).json({ message: "Error fetching categories", error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /categories/{categoryId}/products:
+ *   get:
+ *     summary: Get all products in a specific Category
+ *     tags: [categories]
+ *     parameters:
+ *       - in: path
+ *         name: categoryId
+ *         required: true
+ *         description: The ID of the category to filter products by
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: A list of products in this category
+ *       404:
+ *         description: No products found for this category
+ */
 
 app.get('/categories/:categoryId/products', async (req, res, next) => {
   try {
@@ -287,6 +501,17 @@ app.get('/categories/:categoryId/products', async (req, res, next) => {
 //Products
 //
 
+/**
+ * @swagger
+ * /products:
+ *   get:
+ *     summary: Get all products
+ *     tags: [products]
+ *     responses:
+ *       200:
+ *         description: A list of products
+ */
+
 app.get('/products', async (req, res, next) => {
   try {
     const queryText = `
@@ -302,6 +527,25 @@ app.get('/products', async (req, res, next) => {
     res.status(500).json({ message: "Error fetching products", error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /products/{productId}:
+ *   get:
+ *     summary: Get product by ID
+ *     tags: [products]
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Product details
+ *       404:
+ *         description: Product not found
+ */
 
 app.get('/products/:productId', async (req, res, next) => {
   try {
@@ -330,6 +574,19 @@ app.get('/products/:productId', async (req, res, next) => {
 
 
 // Lets you see Orders
+/**
+ * @swagger
+ * /orders:
+ *   get:
+ *     summary: Lets you see previous Orders
+ *     tags: [orders]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Orders found
+ */
+
 app.get('/orders', authenticateToken, async (req, res, next) => {
   try {
     const queryText = `
@@ -356,6 +613,26 @@ app.get('/orders', authenticateToken, async (req, res, next) => {
 
 
 //Lets you see what is in an Order
+
+/**
+ * @swagger
+ * /orders/{orderId}:
+ *   get:
+ *     summary: Lets you see what is in an Order
+ *     tags: [orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: orderId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order found
+ */
+
 app.get('/orders/:orderId', authenticateToken, async (req, res, next) => {
   try {
     const queryText = `
@@ -382,6 +659,34 @@ app.get('/orders/:orderId', authenticateToken, async (req, res, next) => {
 });
 
 // Cart
+/**
+ * @swagger
+ * /cart:
+ *   post:
+ *     summary: Add an item to the cart
+ *     tags: [cart]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               product_id: { type: integer }
+ *               quantity: { type: integer }
+ *             example:
+ *               product_id: 1
+ *               quantity: 2
+ *     responses:
+ *       200:
+ *         description: Item added or quantity updated
+ *       400:
+ *         description: Not enough stock
+ *       404:
+ *         description: Product not found
+ */
 
 app.post('/cart', authenticateToken, async (req, res, next) => {
   try {
@@ -427,6 +732,19 @@ app.post('/cart', authenticateToken, async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /cart:
+ *   get:
+ *     summary: View current user's cart
+ *     tags: [cart]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of cart items
+ */
+
 app.get('/cart', authenticateToken, async (req, res, next) => {
   try {
     const queryText = `
@@ -448,6 +766,20 @@ app.get('/cart', authenticateToken, async (req, res, next) => {
   }
 });
 
+/**
+ * @swagger
+ * /cart:
+ *   delete:
+ *     summary: Clear out the cart
+ *     tags: [cart]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Cart cleared succesfully
+ */
+
+
 app.delete('/cart', authenticateToken, async (req, res, next) => {
   try {
     const result = await db.query('DELETE FROM cart_items WHERE customer_id = $1 RETURNING *', [req.user.id]);
@@ -455,12 +787,31 @@ app.delete('/cart', authenticateToken, async (req, res, next) => {
     if (result.rows.length === 0) {
       return res.status(200).json({ message: "Cart was already empty." });
     }
-    
+
     res.json({ message: "Cart cleared succesfully" });
   } catch (error) {
     res.status(500).json({ message: "Error deleting the cart", error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /cart/{itemId}:
+ *   delete:
+ *     summary: Remove an item from the cart
+ *     tags: [cart]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: itemId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Item removed
+ */
 
 app.delete('/cart/:itemId', authenticateToken, async (req, res, next) => {
   try {
@@ -473,6 +824,19 @@ app.delete('/cart/:itemId', authenticateToken, async (req, res, next) => {
 
 //Checkout route (involves Payments table)
 //Lets the user process their order
+
+/**
+ * @swagger
+ * /checkout:
+ *   post:
+ *     summary: Checkout items from the cart
+ *     tags: [checkout]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Checkout succesfull
+ */
 
 app.post('/checkout', authenticateToken, async (req, res, next) => {
 
