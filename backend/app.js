@@ -232,7 +232,7 @@ app.get('/products/:productId/reviews', async (req, res, next) => {
          reviews.*, 
          customers.username 
        FROM reviews 
-       INNER JOIN customers ON reviews.customer_id = customers.customer_id 
+       INNER JOIN customers ON reviews.customer_id = customers.id 
        WHERE reviews.product_id = $1
        ORDER BY reviews.review_date DESC
      `;
@@ -242,6 +242,55 @@ app.get('/products/:productId/reviews', async (req, res, next) => {
    } catch (error) {
      res.status(500).json({ message: "Error fetching reviews", error: error.message });
    }
+});
+
+/**
+ * @swagger
+ * /products/{productId}/reviews:
+ *   post:
+ *     summary: Leave a review for a product
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: productId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               rating: { type: integer, minimum: 1, maximum: 5 }
+ *               review_text: { type: string }
+ *     responses:
+ *       201:
+ *         description: Review added successfully
+ */
+
+app.post('/products/:productId/reviews', authenticateToken, async (req, res, next) => {
+  const {rating, review_text} = req.body;
+  const { productId } = req.params;
+  const customer_id = req.user.id;
+
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return res.status(400).json({ message: "Rating must be an integer between 1 and 5." });
+  }
+
+  try {
+    const newReview = await db.query('INSERT INTO reviews (customer_id, product_id, rating, review_text, review_date) VALUES ($1, $2, $3, $4, NOW()) RETURNING *',
+      [customer_id, productId, rating, review_text]
+    );
+
+    res.status(201).json(newReview.rows[0]);
+
+  } catch (error) {
+    res.status(500).json({ message: "Error adding review", error: error.message });
+  }
 });
 
 
