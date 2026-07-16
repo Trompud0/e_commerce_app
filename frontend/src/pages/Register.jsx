@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 
-function Register() {
+function Register({ setIsLoggedIn }) {
   const navigate = useNavigate();
 
   // 1. We create state variables to hold form data
@@ -28,6 +28,7 @@ function Register() {
       const { token, user } = response.data;
       
       localStorage.setItem('token', token);
+      setIsLoggedIn(true);
       console.log('Successfully registered and logged in as:', user.username);
       navigate('/');
 

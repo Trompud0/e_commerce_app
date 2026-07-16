@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { GoogleLogin } from '@react-oauth/google';
 
-function Login() {
+function Login({ setIsLoggedIn }) {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +21,7 @@ function Login() {
       const { token, user } = response.data;
 
       localStorage.setItem('token', token);
+      setIsLoggedIn(true);
       console.log('Successfully logged in as:', user.username);
       navigate('/');
 
@@ -44,6 +45,7 @@ function Login() {
 
       // Save our native application JWT to local storage and redirect home
       localStorage.setItem('token', token);
+      setIsLoggedIn(true);
       console.log('Successfully logged in via Google as:', user.username);
       navigate('/');
 

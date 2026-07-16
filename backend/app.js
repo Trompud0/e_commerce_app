@@ -194,7 +194,7 @@ app.post('/login', async (req, res, next) => {
     const token = jwt.sign(
       { id: user.id, username: user.username }, 
       JWT_SECRET, 
-      { expiresIn: '1h' } // Token expires in 1 hour
+      { expiresIn: '3h' } // Token expires in 3 hours
     );
 
     res.status(200).json({
