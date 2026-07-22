@@ -1,8 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom';
-import './Navbar.css'; // We will create this file next!
+import './Navbar.css'; 
+import { useContext } from 'react';
+import { CartContext } from '../pages/CartContext';
 
 function Navbar({isLoggedIn, setIsLoggedIn}) {
   const navigate = useNavigate();
+
+  const { cart } = useContext(CartContext);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -11,6 +15,10 @@ function Navbar({isLoggedIn, setIsLoggedIn}) {
 
     navigate('/login');
   };
+
+  const getCartItemCount = () => {
+    return cart.reduce((total, item) => total + item.quantity, 0);
+  }
 
   return (
     <nav className="navbar">
@@ -21,8 +29,14 @@ function Navbar({isLoggedIn, setIsLoggedIn}) {
         <li>
           <Link to="/">Products</Link>
         </li>
+        
         <li>
-          <Link to="/cart">Cart 🛒</Link>
+          <Link to="/cart" className="cart-link">
+            Cart 🛒 
+            {getCartItemCount() > 0 && (
+              <span className="cart-badge">{getCartItemCount()}</span>
+            )}
+          </Link>
         </li>
 
         {isLoggedIn ? (

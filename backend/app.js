@@ -731,7 +731,7 @@ app.get('/orders', authenticateToken, async (req, res, next) => {
     const result = await db.query(queryText, [req.user.id]);
     
     if (result.rows.length === 0) {
-      return res.status(200).json({message:"You haven't placed any orders yet."});
+      return res.status(200).json([]);
     }
 
     res.json(result.rows);
