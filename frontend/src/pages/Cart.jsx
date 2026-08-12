@@ -1,7 +1,5 @@
 import { useEffect, useContext } from 'react';
-import { CartContext
-
- } from './CartContext';
+import { CartContext } from './CartContext';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 
@@ -83,13 +81,15 @@ function Cart() {
             <h3>Total: ${calculateCartTotal()}</h3>
             
             {/* We will route this to Stripe payments during Phase 5 */}
-            <button style={{
-              marginTop: '1rem', padding: '0.8rem 2rem', backgroundColor: '#00adb5',
-              color: 'white', border: 'none', borderRadius: '4px', fontComponent: '1.1rem',
-              fontWeight: 'bold', cursor: 'pointer'
-            }}>
-              Proceed to Checkout 💳
-            </button>
+            <Link to="/checkout" style={{ width: '100%', textDecoration: 'none' }}>
+                <button style={{
+                marginTop: '1rem', padding: '0.8rem 2rem', backgroundColor: '#00adb5',
+                color: 'white', border: 'none', borderRadius: '4px', fontSize: '1.1rem',
+                fontWeight: 'bold', cursor: 'pointer', width: '100%'
+                 }}>
+                Proceed to Checkout 💳
+                </button>
+            </Link>
           </div>
         </div>
       )}

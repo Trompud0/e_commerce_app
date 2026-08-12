@@ -40,9 +40,14 @@ function Navbar({isLoggedIn, setIsLoggedIn}) {
         </li>
 
         {isLoggedIn ? (
-          <li>
-            <button onClick={handleLogout} className='logout-btn'>Logout</button>
-          </li>  
+          <>
+            <li>
+              <Link to="/orders">Orders 📜</Link>
+            </li>
+            <li>
+              <button onClick={handleLogout} className='logout-btn'>Logout</button>
+            </li>  
+          </> 
         ) : (
             <>
               <li><Link to="/login">Login</Link></li>
