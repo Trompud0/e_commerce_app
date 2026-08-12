@@ -14,6 +14,8 @@ function Register({ setIsLoggedIn }) {
   const [address, setAddress] = useState('');
   const [error, setError] = useState('');
 
+  const API_URL = import.meta.env.VITE_APP_API_URL || 'http://localhost:3000';
+
 
   // This function runs when the user clicks "Submit"
   const handleSubmit = async (e) => {
@@ -24,7 +26,7 @@ function Register({ setIsLoggedIn }) {
     try {
       const payload = {username, email, password, phone, address};
 
-      const response = await axios.post('http://localhost:3000/registration', payload);
+      const response = await axios.post(`${API_URL}/registration`, payload);
       const { token, user } = response.data;
       
       localStorage.setItem('token', token);

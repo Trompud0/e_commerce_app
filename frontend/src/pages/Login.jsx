@@ -9,6 +9,8 @@ function Login({ setIsLoggedIn }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  const API_URL = import.meta.env.VITE_APP_API_URL || 'http://localhost:3000';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -17,7 +19,7 @@ function Login({ setIsLoggedIn }) {
     try {
       const payload = {username, password};
 
-      const response = await axios.post('http://localhost:3000/login', payload);
+      const response = await axios.post(`${API_URL}/auth/google`, { googleToken });
       const { token, user } = response.data;
 
       localStorage.setItem('token', token);
@@ -80,6 +82,7 @@ function Login({ setIsLoggedIn }) {
 
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <GoogleLogin
+          clientId={import.meta.env.VITE_GOOGLE_CLIENT_ID}
           onSuccess={handleGoogleSuccess}
           onError={() => setError('Google Authentication Failed')}
         />
